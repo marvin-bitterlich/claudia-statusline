@@ -285,8 +285,10 @@ fn format_statusline_string(
             {
                 let current_tokens = crate::utils::get_token_count_from_transcript(transcript);
                 let full_config = config::get_config();
-                let window_size =
-                    Some(crate::utils::get_context_window_for_model(model_name, full_config));
+                let window_size = Some(crate::utils::get_context_window_for_model(
+                    model_name,
+                    full_config,
+                ));
                 parts.push(format_context_bar(&context, current_tokens, window_size));
             }
         }
@@ -504,7 +506,12 @@ fn format_context_bar(
     match context.compaction_state {
         CompactionState::InProgress => {
             // Simple static indicator - statusline doesn't update frequently enough for animation
-            format!("{}Compacting...{}{}", Colors::yellow(), Colors::reset(), token_display)
+            format!(
+                "{}Compacting...{}{}",
+                Colors::yellow(),
+                Colors::reset(),
+                token_display
+            )
         }
 
         CompactionState::RecentlyCompleted => {
