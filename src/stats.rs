@@ -507,33 +507,51 @@ impl StatsData {
         (daily_total, monthly_total)
     }
 
-    /// Update max_tokens_observed for a session (adaptive learning)
-    /// This should be called after update_session when context usage is calculated
+    /// Update max_tokens_observed for a session (adaptive learning).
+    ///
+    /// Allows increases and large decreases (>20%, indicates compaction).
+    /// Small decreases are ignored as noise.
     pub fn update_max_tokens(&mut self, session_id: &str, current_tokens: u32) {
         // Update in-memory stats
         if let Some(session) = self.sessions.get_mut(session_id) {
-            let new_max = session.max_tokens_observed.unwrap_or(0).max(current_tokens);
-            session.max_tokens_observed = Some(new_max);
-        }
+            let existing = session.max_tokens_observed.unwrap_or(0);
 
-        // Persist to SQLite database using dedicated method
-        if let Ok(db_path) = Self::get_sqlite_path() {
-            if let Ok(db) = SqliteDatabase::new(&db_path) {
-                if let Err(e) = db.update_max_tokens_observed(session_id, current_tokens) {
+            let new_value = if current_tokens >= existing {
+                // Increase - always allow
+                current_tokens
+            } else if existing > 0 {
+                // Decrease - check if significant (>20% drop = likely compaction)
+                let decrease_ratio = (existing - current_tokens) as f64 / existing as f64;
+                if decrease_ratio > 0.20 {
+                    current_tokens
+                } else {
+                    existing // Small decrease - ignore as noise
+                }
+            } else {
+                current_tokens
+            };
+
+            session.max_tokens_observed = Some(new_value);
+
+            // Persist to SQLite database
+            if let Ok(db_path) = Self::get_sqlite_path() {
+                if let Ok(db) = SqliteDatabase::new(&db_path) {
+                    if let Err(e) = db.update_max_tokens_observed(session_id, new_value) {
+                        log::warn!(
+                            "Failed to update max_tokens_observed for session {} in SQLite: {}",
+                            session_id,
+                            e
+                        );
+                    }
+                } else {
                     log::warn!(
-                        "Failed to update max_tokens_observed for session {} in SQLite: {}",
-                        session_id,
-                        e
+                        "Failed to open SQLite database at {:?} for max_tokens update",
+                        db_path
                     );
                 }
             } else {
-                log::warn!(
-                    "Failed to open SQLite database at {:?} for max_tokens update",
-                    db_path
-                );
+                log::warn!("Failed to get SQLite path for max_tokens update");
             }
-        } else {
-            log::warn!("Failed to get SQLite path for max_tokens update");
         }
     }
 }

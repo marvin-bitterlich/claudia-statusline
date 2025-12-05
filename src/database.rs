@@ -407,19 +407,16 @@ impl SqliteDatabase {
         })
     }
 
-    /// Update only max_tokens_observed for a session (for adaptive learning)
-    /// Only updates if new value is greater than current value
-    pub fn update_max_tokens_observed(&self, session_id: &str, current_tokens: u32) -> Result<()> {
+    /// Update max_tokens_observed for a session (for adaptive learning).
+    /// The caller handles filtering logic, so this just sets the value.
+    pub fn update_max_tokens_observed(&self, session_id: &str, tokens: u32) -> Result<()> {
         let retry_config = RetryConfig::for_db_ops();
 
         retry_if_retryable(&retry_config, || {
             let conn = self.get_connection()?;
             conn.execute(
-                "UPDATE sessions
-                 SET max_tokens_observed = ?2
-                 WHERE session_id = ?1
-                   AND (max_tokens_observed IS NULL OR max_tokens_observed < ?2)",
-                params![session_id, current_tokens as i64],
+                "UPDATE sessions SET max_tokens_observed = ?2 WHERE session_id = ?1",
+                params![session_id, tokens as i64],
             )?;
             Ok(())
         })
